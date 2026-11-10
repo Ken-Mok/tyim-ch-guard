@@ -1,0 +1,5 @@
+.DS_Store
+/build/
+/tyim-ch-guard
+*.o
+*.swp
