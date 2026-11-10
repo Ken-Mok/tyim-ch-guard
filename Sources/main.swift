@@ -4,7 +4,7 @@ import Carbon
 import CoreGraphics
 import Foundation
 
-let guardVersion = "1.2.0"
+let guardVersion = "1.3.0"
 let chatGPTBundleID = "com.openai.codex"
 let supportedOwners = ["ChatGPT": chatGPTBundleID, "Microsoft Teams": "com.microsoft.teams2"]
 let commitKeycodes: Set<Int64> = [41, 39, 44, 43, 47]
@@ -24,9 +24,29 @@ struct Candidate: Equatable {
     }
 }
 
-func isTYIM(_ sourceID: String) -> Bool {
-    sourceID == "com.apple.inputmethod.TYIM"
-        || sourceID.hasPrefix("com.apple.inputmethod.TYIM.")
+// Explicit Apple namespaces: no third-party or non-Chinese input methods.
+let supportedInputMethods = [
+    "com.apple.inputmethod.TCIM": "TCIM_Extension",
+    "com.apple.inputmethod.TYIM": "TYIM_Extension",
+    "com.apple.inputmethod.SCIM": "SCIM_Extension",
+]
+
+func inputMethodProcess(_ sourceID: String) -> String? {
+    supportedInputMethods.first { sourceID == $0.key || sourceID.hasPrefix($0.key + ".") }?.value
+}
+
+func isSupportedIME(_ sourceID: String) -> Bool { inputMethodProcess(sourceID) != nil }
+
+// Window metadata does not identify the originating IME. Never choose between
+// multiple running engines based on the current source: the bar may be older.
+func restartTarget(sourceID: String, running: Set<String>) -> String? {
+    let supported = running.intersection(supportedInputMethods.values)
+    guard supported.count == 1, let sole = supported.first else { return nil }
+    if let active = inputMethodProcess(sourceID) {
+        return active == sole ? sole : nil
+    }
+    guard sourceID.hasPrefix("com.apple.keylayout.") else { return nil }
+    return sole
 }
 
 struct Observation {
@@ -34,7 +54,7 @@ struct Observation {
     let sourceID: String
     let ownerIsFrontmost: Bool
     var ids: Set<CGWindowID> { Set(candidates.map(\.id)) }
-    var tyim: Bool { isTYIM(sourceID) }
+    var supportedIME: Bool { isSupportedIME(sourceID) }
 }
 
 /// Pure policy: tests exercise timers and keyboard context without restarting an IME.
@@ -54,7 +74,7 @@ struct RecoveryPolicy {
     private var observedAt: TimeInterval?
     private var pending: Pending?
     private var away: Departure?
-    private var leftTYIM: Departure?
+    private var leftIME: Departure?
     private var lastClear: TimeInterval?
 
     init(now: TimeInterval) { startedAt = now }
@@ -63,7 +83,7 @@ struct RecoveryPolicy {
                           sourceID: String, ownerIsFrontmost: Bool) {
         // A later key may start a new composition in the same native window.
         pending = nil
-        guard punctuation, ownerIsFrontmost, isTYIM(sourceID),
+        guard punctuation, ownerIsFrontmost, isSupportedIME(sourceID),
               let previous = lastObservation, previous.ownerIsFrontmost,
               previous.sourceID == sourceID, !previous.ids.isEmpty,
               let observedAt, now >= observedAt, now - observedAt <= 0.5 else { return }
@@ -86,18 +106,18 @@ struct RecoveryPolicy {
         }
 
         // Keep the departure timer across polls; only retain the original windows.
-        if current.tyim || current.sourceID.isEmpty || ids.isEmpty {
-            leftTYIM = nil
+        if current.supportedIME || current.sourceID.isEmpty || ids.isEmpty {
+            leftIME = nil
         } else {
-            if previous?.tyim == true {
+            if previous?.supportedIME == true {
                 let original = ids.intersection(previous?.ids ?? [])
-                leftTYIM = original.isEmpty ? nil : Departure(ids: original, since: now)
+                leftIME = original.isEmpty ? nil : Departure(ids: original, since: now)
             }
-            if var departure = leftTYIM {
+            if var departure = leftIME {
                 departure.ids.formIntersection(ids)
-                leftTYIM = departure.ids.isEmpty ? nil : departure
+                leftIME = departure.ids.isEmpty ? nil : departure
                 if !departure.ids.isEmpty, now - departure.since >= 0.4 {
-                    reason = reason ?? "left-tyim"
+                    reason = reason ?? "left-ime"
                 }
             }
         }
@@ -120,7 +140,7 @@ struct RecoveryPolicy {
             startupHandled = true
             // A single active candidate at startup can be legitimate.
             if !ids.isEmpty, !current.sourceID.isEmpty,
-               !current.ownerIsFrontmost || !current.tyim {
+               !current.ownerIsFrontmost || !current.supportedIME {
                 reason = reason ?? "startup"
             }
         }
@@ -131,7 +151,7 @@ struct RecoveryPolicy {
         lastClear = now
         pending = nil
         away = nil
-        leftTYIM = nil
+        leftIME = nil
         return reason
     }
 }
@@ -246,22 +266,39 @@ func log(_ message: String) {
     }
 }
 
-@discardableResult
-func clearCandidates(reason: String) -> Bool {
+func commandStatus(_ executable: String, _ arguments: [String]) -> Int32? {
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-    process.arguments = ["-TERM", "TYIM_Extension"]
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = arguments
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
     do {
         try process.run()
         process.waitUntilExit()
-        log("clear-attempt reason=\(reason) status=\(process.terminationStatus)")
-        return process.terminationStatus == 0
+        return process.terminationStatus
     } catch {
-        log("clear failed \(error.localizedDescription)")
+        log("command failed executable=\(executable) error=\(error.localizedDescription)")
+        return nil
+    }
+}
+
+func runningInputMethodProcesses() -> Set<String> {
+    Set(supportedInputMethods.values.filter {
+        commandStatus("/usr/bin/pgrep", ["-u", String(getuid()), "-x", $0]) == 0
+    })
+}
+
+@discardableResult
+func clearCandidates(reason: String) -> Bool {
+    let sourceID = currentInputSourceID()
+    let running = runningInputMethodProcesses()
+    guard let target = restartTarget(sourceID: sourceID, running: running) else {
+        log("clear-skipped reason=\(reason) source=\(sourceID) running=\(running.sorted().joined(separator: ",")) no-unambiguous-target")
         return false
     }
+    let status = commandStatus("/usr/bin/killall", ["-u", NSUserName(), "-TERM", target])
+    log("clear-attempt reason=\(reason) target=\(target) status=\(status.map(String.init) ?? "unavailable")")
+    return status == 0
 }
 
 func printStatus() {
@@ -277,6 +314,8 @@ func printStatus() {
         "matching_candidate_count": scan.candidates.count,
         "matching_candidates_by_owner": grouped,
         "supported_owners": supportedOwners,
+        "supported_input_methods": supportedInputMethods,
+        "active_input_method_process": inputMethodProcess(currentInputSourceID()) ?? "none",
         "window_list_available": scan.available,
     ]
     if let data = try? JSONSerialization.data(withJSONObject: status, options: [.prettyPrinted, .sortedKeys]),
@@ -315,7 +354,7 @@ final class Guard {
         let listening = tap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false
         let groups = Dictionary(grouping: scan.candidates, by: \.ownerBundleID).mapValues(\.count)
         let ownerSummary = groups.keys.sorted().map { "\($0):\(groups[$0] ?? 0)" }.joined(separator: ",")
-        let state = "candidates=\(scan.candidates.count) owners=\(ownerSummary) windowListAvailable=\(scan.available) tyim=\(isTYIM(sourceID)) sourceKnown=\(!sourceID.isEmpty) punctuationListener=\(listening)"
+        let state = "candidates=\(scan.candidates.count) owners=\(ownerSummary) windowListAvailable=\(scan.available) supportedIME=\(isSupportedIME(sourceID)) sourceKnown=\(!sourceID.isEmpty) punctuationListener=\(listening)"
         if state != lastState || now - lastStateLoggedAt >= 60 {
             log("state \(state)")
             lastState = state
@@ -403,14 +442,14 @@ if CommandLine.arguments.contains("--version") {
         case .removed:
             print("Verified that \(found.count) original matching window(s) disappeared.")
         case .remaining(let count):
-            fputs("TYIM restart succeeded, but \(count) original matching window(s) remain.\n", stderr)
+            fputs("Input-method restart succeeded, but \(count) original matching window(s) remain.\n", stderr)
             exit(2)
         case .unavailable:
-            fputs("TYIM restart sent; window enumeration is unavailable, so cleanup is unverified.\n", stderr)
+            fputs("Input-method restart sent; window enumeration is unavailable, so cleanup is unverified.\n", stderr)
             exit(3)
         }
     } else {
-        fputs("TYIM restart failed. Check the guard log.\n", stderr)
+        fputs("Input-method restart failed. Check the guard log.\n", stderr)
         exit(1)
     }
 } else {

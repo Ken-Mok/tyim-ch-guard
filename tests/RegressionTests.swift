@@ -18,7 +18,7 @@ do {
     _ = p.observe(observation(), now: 100)
     expect(p.observe(observation(source: abcSource), now: 100.2) == nil, "leaving TYIM starts a grace period")
     expect(p.observe(observation(source: abcSource), now: 100.4) == nil, "departure survives the next poll")
-    expect(p.observe(observation(source: abcSource), now: 100.81) == "left-tyim", "original timer bug: persistent panel clears after leaving TYIM")
+    expect(p.observe(observation(source: abcSource), now: 100.81) == "left-ime", "original timer bug: persistent panel clears after leaving TYIM")
 }
 do {
     var p = RecoveryPolicy(now: 0)
@@ -86,7 +86,7 @@ do {
     var q = RecoveryPolicy(now: 0)
     expect(q.observe(observation(source: ""), now: 1.6) == nil, "unknown input source never authorizes a reset")
 }
-expect(!isTYIM("com.apple.inputmethod.TYIM-Fake"), "input-source matching requires the exact TYIM namespace")
+expect(!isSupportedIME("com.apple.inputmethod.TYIM-Fake"), "input-source matching requires the exact TYIM namespace")
 let teamsOwner = "com.microsoft.teams2"
 func candidateWindow(_ id: Int, width: Double = 397, owner: String = "Microsoft Teams",
                      layer: Int = 20, title: String = "") -> [String: Any] {
@@ -152,5 +152,44 @@ do {
     expect(verify(action, against: CandidateScan(available: true, candidates: teamsCandidates)) == .remaining(6), "successful TERM alone does not report old bars removed")
     expect(verify(action, against: CandidateScan(available: true, candidates: [])) == .removed, "verification confirms original IDs disappeared")
     expect(verify(action, against: CandidateScan(available: false, candidates: [])) == .unavailable, "unavailable enumeration never counts as successful cleanup")
+}
+// Every built-in Chinese keyboard family must retain composition protection.
+for source in ["com.apple.inputmethod.TCIM.Jianyi", "com.apple.inputmethod.TYIM.Sucheng",
+               "com.apple.inputmethod.SCIM.ITABC"] {
+    var p = RecoveryPolicy(now: 0)
+    expect(p.observe(observation(source: source), now: 1.6) == nil, "startup protects \(source)")
+    expect(p.observe(observation(source: source), now: 60) == nil, "stationary composition survives for \(source)")
+    p.keyDown(now: 60.1, punctuation: true, sourceID: source, ownerIsFrontmost: true)
+    expect(p.observe(observation(source: source), now: 60.31) == "punctuation", "punctuation recovery for \(source)")
+    var departure = RecoveryPolicy(now: 0)
+    _ = departure.observe(observation(source: source), now: 0)
+    _ = departure.observe(observation(source: abcSource), now: 0.2)
+    expect(departure.observe(observation(source: abcSource), now: 0.81) == "left-ime", "departure recovery for \(source)")
+}
+for (family, process) in supportedInputMethods {
+    expect(inputMethodProcess(family) == process, "base namespace maps to \(process)")
+    expect(inputMethodProcess(family + ".AnyKeyboardMode") == process, "all modes within \(family) are supported")
+    expect(inputMethodProcess(family + "-Fake") == nil, "namespace lookalikes are rejected")
+    expect(restartTarget(sourceID: family + ".Mode", running: [process]) == process,
+           "sole engine matching active source can recover")
+    expect(restartTarget(sourceID: family + ".Mode", running: Set(supportedInputMethods.values)) == nil,
+           "active source cannot attribute stale windows when several engines run")
+    expect(restartTarget(sourceID: family, running: []) == nil, "missing active engine does not restart another engine")
+}
+expect(restartTarget(sourceID: abcSource, running: ["TCIM_Extension"]) == "TCIM_Extension", "user regression: ABC with TCIM running targets TCIM")
+expect(restartTarget(sourceID: abcSource, running: ["TYIM_Extension"]) == "TYIM_Extension", "legacy TYIM cleanup after leaving Chinese")
+expect(restartTarget(sourceID: abcSource, running: ["SCIM_Extension"]) == "SCIM_Extension", "SCIM cleanup after leaving Chinese")
+expect(restartTarget(sourceID: abcSource, running: ["TCIM_Extension", "TYIM_Extension"]) == nil, "ambiguous engines are not all restarted")
+expect(restartTarget(sourceID: abcSource, running: []) == nil, "no running engine is a no-op")
+expect(restartTarget(sourceID: "com.apple.inputmethod.TYIM.Sucheng", running: ["TCIM_Extension"]) == nil,
+       "family switch does not restart the previous engine while a new source is active")
+expect(restartTarget(sourceID: "", running: ["TCIM_Extension"]) == nil, "unknown source never targets an engine")
+expect(restartTarget(sourceID: "com.apple.inputmethod.Japanese", running: ["TCIM_Extension"]) == nil, "unrelated input method never targets a Chinese engine")
+do {
+    var p = RecoveryPolicy(now: 0)
+    _ = p.observe(observation(source: "com.apple.inputmethod.TCIM.Jianyi"), now: 0)
+    p.keyDown(now: 0.1, punctuation: true, sourceID: "com.apple.inputmethod.TCIM.Jianyi", ownerIsFrontmost: true)
+    expect(p.observe(observation(source: "com.apple.inputmethod.SCIM.ITABC"), now: 0.4) == nil,
+           "switching Chinese families cancels pending punctuation")
 }
 print("\(passed) regression checks passed; no live IME was restarted.")

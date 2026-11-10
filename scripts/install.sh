@@ -109,7 +109,7 @@ if printf "%s\n" "${status}" | grep -q '"accessibility_granted" : false'; then
   echo "ACTION REQUIRED: macOS has not authorized punctuation recovery for this executable."
   echo "In System Settings > Privacy & Security > Accessibility, turn tyim-ch-guard off and on."
   echo "If it is still untrusted, remove its old entry and add the installed executable again."
-  echo "A single active TYIM candidate is protected; multiple matching bars can trigger a reset."
+  echo "A single active Chinese input-method candidate is protected; multiple matching bars can trigger a reset."
   open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" >/dev/null 2>&1 || true
 fi
 echo "Computer History settings were not changed."

@@ -1,10 +1,20 @@
 # tyim-ch-guard
 
-Local macOS workaround for ChatGPT Computer History leaving Traditional Chinese IME candidate bars on screen. Current version: **1.2.0**.
+Local macOS workaround for ChatGPT Computer History leaving Chinese IME candidate bars on screen. Current version: **1.3.0**.
 
 Tracked upstream: [openai/codex#42181](https://github.com/openai/codex/issues/42181).
 
-Computer History stays enabled. ChatGPT and Microsoft Teams are supported owners. The guard detects candidate-like windows and sends `TERM` to `TYIM_Extension`; it does not change ChatGPT or its recorder. This is recovery after the underlying bug occurs, not an upstream fix.
+Computer History stays enabled. ChatGPT and Microsoft Teams are supported owners. The guard detects candidate-like windows and sends `TERM` to the selected Chinese input-method extension; it does not change ChatGPT or its recorder. This is recovery after the underlying bug occurs, not an upstream fix.
+
+## Supported Chinese keyboard input methods
+
+- **TCIM**: Traditional Chinese — Cangjie, Sucheng, Pinyin, Shuangpin, Stroke, and Zhuyin.
+- **TYIM**: Cantonese — Cangjie, Sucheng, Stroke, and Phonetic.
+- **SCIM**: Simplified Chinese — Pinyin, Shuangpin, Stroke, and Wubi.
+
+All modes in the exact `com.apple.inputmethod.TCIM`, `.TYIM`, and `.SCIM` namespaces are recognized. Handwriting, Japanese, Korean, and third-party input methods are outside this version's scope. Window matching still covers ChatGPT and Microsoft Teams with the existing geometry heuristic; supporting an engine does not guarantee every candidate layout matches.
+
+Recovery runs only when exactly one supported Chinese engine is running for the current user. If a Chinese source is active, it must match that sole engine; a plain keyboard such as ABC also permits recovery. Multiple running engines, an unknown source, or a different unsupported input method cause cleanup to be skipped and logged as `no-unambiguous-target`. The current source alone cannot identify which engine produced an old bar, so the guard never chooses between multiple engines or broadcasts TERM to them. Logs name the selected process. The status command lists supported input-method namespaces and the active engine.
 
 ## Install or upgrade
 
@@ -16,7 +26,7 @@ cd tyim-ch-guard
 ./scripts/install.sh
 ```
 
-For an existing checkout, run `git pull --ff-only`, then `./scripts/install.sh`.
+For an existing clean checkout, run `git pull --ff-only`, then `./scripts/install.sh`.
 
 The installer builds before stopping the running service, backs up the installed source, executable, and LaunchAgent, then replaces the executable and restarts the service. Existing login settings are preserved. If replacement or startup fails, it attempts to restore the previous installation. The backup path is printed.
 
@@ -42,7 +52,7 @@ Check the installed executable from a normal Terminal:
 - The daemon log should show `event tap listening` once monitoring starts. Multiple-bar recovery does not require this listener.
 - After cleanup, `verification owner=... result=removed` confirms that the original matching window IDs disappeared.
 
-Without Accessibility, multiple-window, focus-change, and input-source-change recovery can still operate. A single candidate while its owning app and TYIM remain active is deliberately left alone: there is no unconditional 20-second reset.
+Without Accessibility, multiple-window, focus-change, and input-source-change recovery can still operate. A single candidate while its owning app and a supported Chinese input method remain active is deliberately left alone: there is no unconditional 20-second reset.
 
 ## An existing bar did not disappear after upgrading
 
@@ -56,7 +66,7 @@ The command reports whether matching windows were found and whether the restart 
 
 ## Recovery rules
 
-If several visible bars survive a successful TYIM restart, collect their actual window metadata before changing matching rules:
+If several visible bars survive a successful input-method restart, collect their actual window metadata before changing matching rules:
 
 ```bash
 ./scripts/diagnose.sh
@@ -66,15 +76,15 @@ Run this from a normal Terminal while the bars remain visible. It makes no chang
 
 Matching windows have owner `ChatGPT` or `Microsoft Teams`, layer `20`, no available title, height 20–40, and width 40–900. The 40-point lower limit includes the observed 52-point Teams pill. Window Server and Control Center windows remain excluded. The original upstream example is approximately `397 × 28`; a later user report identified five Teams-owned `397 × 28` bars and one `52 × 28` pill, all excluded by the old ChatGPT-only rule.
 
-The guard polls every 0.2 seconds and may restart TYIM when:
+The guard polls every 0.2 seconds and may restart the selected Chinese input method when:
 
 1. Two or more matching windows exist for the same owner. One bar in each of two apps is not counted as multiple bars for a single owner.
 2. The same matching window remains after leaving its owning app for about 0.6 seconds.
-3. A window present while TYIM was active remains about 0.4 seconds after leaving that input method.
-4. About 1.5 seconds after startup, a matching window exists outside an active supported-owner/TYIM composition.
+3. A window present while a supported Chinese input method was active remains about 0.4 seconds after switching to a plain keyboard such as ABC. Switching between Chinese families does not itself trigger departure cleanup; engine attribution is ambiguous.
+4. About 1.5 seconds after startup, a matching window exists outside an active supported-owner/Chinese-input-method composition.
 5. An authorized punctuation event (`;`, `'`, `/`, `,`, or `.`) leaves its original window visible after about 0.2 seconds.
 
-Punctuation recovery only arms inside the candidate window’s owning app with TYIM active and a recent matching window. Command, Control, and Option shortcuts do not arm it. Further typing or a focus/input-source change cancels pending punctuation cleanup. Actual recovery latency includes the polling interval; restarts are limited to at most one every two seconds.
+Punctuation recovery only arms inside the candidate window’s owning app with a supported Chinese input method active and a recent matching window. Command, Control, and Option shortcuts do not arm it. Further typing or a focus/input-source change cancels pending punctuation cleanup. Actual recovery latency includes the polling interval; restarts are limited to at most one every two seconds.
 
 Recovery policies are kept separately for each owner, with one global restart cooldown. After an automatic restart, the guard checks original window IDs after 0.8 seconds. Logs report `removed`, `remaining(n)`, or `unavailable`. If windows remain or cannot be checked, the owner backs off for 15 seconds before another attempt. A successful TERM exit alone is not treated as a successful cleanup.
 
@@ -114,7 +124,7 @@ Remove the installed service, executable, source, and backups:
 
 ## Limitations
 
-Window geometry is a heuristic and cannot prove that a candidate is stale. Restarting TYIM affects the whole input-method process and can discard uncommitted text, including a composition in another app. Keep important drafts before explicit cleanup. Other input methods or candidate-window layouts may not match these rules.
+Window geometry is a heuristic and cannot prove that a candidate is stale. Restarting an input method affects the whole input-method process and can discard uncommitted text, including a composition in another app. Keep important drafts before explicit cleanup. Other input methods or candidate-window layouts may not match these rules.
 
 See [CHANGELOG.md](CHANGELOG.md) for version details.
 

@@ -1,3 +1,12 @@
+## 1.3.0 — 2026-11-10
+
+- Recognize all keyboard modes in Apple's TCIM, TYIM, and SCIM namespaces.
+- Apply startup protection, punctuation recovery, and departure recovery to all three families.
+- Restart only a sole running Chinese engine, with a matching active Chinese source or a plain keyboard such as ABC; skip ambiguous targets and log the reason.
+- Restrict process discovery and termination to the current user, and log the selected target.
+- Add regression coverage for TCIM-only recovery, SCIM/TYIM compatibility, active compositions, family changes, and ambiguous or unsupported targets.
+- Keep owner/window heuristics, verification, cooldowns, and installation paths unchanged.
+
 # Changelog
 
 ## 1.2.0
