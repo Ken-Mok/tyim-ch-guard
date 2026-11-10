@@ -3,3 +3,6 @@
 /tyim-ch-guard
 *.o
 *.swp
+__pycache__/
+*.pyc
+
