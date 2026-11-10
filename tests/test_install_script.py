@@ -42,7 +42,7 @@ import os, pathlib, sys
 if os.environ.get("TYIM_GUARD_TEST_COMPILE_FAIL"):
     sys.exit(9)
 out = pathlib.Path(sys.argv[sys.argv.index("-o") + 1])
-out.write_text("#!/bin/sh\\ncase \\\"$1\\\" in\\n--version) echo 'tyim-ch-guard 1.1.1';;\\n--status) echo '{\\\"accessibility_granted\\\" : false, \\\"version\\\" : \\\"1.1.1\\\"}';;\\nesac\\n")
+out.write_text("#!/bin/sh\\ncase \\\"$1\\\" in\\n--version) echo 'tyim-ch-guard 1.2.0';;\\n--status) echo '{\\\"accessibility_granted\\\" : false, \\\"version\\\" : \\\"1.2.0\\\"}';;\\nesac\\n")
 out.chmod(0o755)
 ''')
         self.command("launchctl", '''#!/usr/bin/env python3

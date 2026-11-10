@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- Fix the reported six missed Microsoft Teams windows: recognize Teams as well as ChatGPT and include the observed 52-point-wide pill.
+- Keep strict owner, layer-20, untitled, and height checks; exclude Window Server, Control Center, and normal app main windows.
+- Track focus, punctuation, and cleanup policy separately for each owner while sharing a global restart cooldown.
+- Verify the original window IDs after restarting TYIM. Log surviving windows or unavailable enumeration, and back off unsuccessful owners for 15 seconds.
+- Make `--once` return a nonzero status when original windows remain or cleanup cannot be verified.
+- Report candidate counts by owner and compare legacy versus 1.2 matching in read-only diagnostics.
+
 ## 1.1.1
 
 - Add a standalone read-only window diagnostic for narrow pills and other owners that the guard excludes, with explicit exclusion reasons and no window-title or candidate text.

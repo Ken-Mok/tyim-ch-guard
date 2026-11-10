@@ -16,11 +16,13 @@ func explainWindow(_ window: [String: Any]) -> [String: Any]? {
     let hasTitle = !(window[kCGWindowName as String] as? String ?? "").isEmpty
     let pid = pid_t(numeric(window[kCGWindowOwnerPID as String]))
     var exclusions: [String] = []
-    if owner != "ChatGPT" { exclusions.append("owner is not ChatGPT") }
+    if !["ChatGPT", "Microsoft Teams"].contains(owner) { exclusions.append("owner is not ChatGPT or Microsoft Teams") }
     if layer != 20 { exclusions.append("layer is not 20") }
     if hasTitle { exclusions.append("window has a title") }
     if !(20...40).contains(height) { exclusions.append("height outside 20...40") }
-    if !(80...900).contains(width) { exclusions.append("width outside 80...900") }
+    if !(40...900).contains(width) { exclusions.append("width outside 40...900") }
+    let legacyMatch = owner == "ChatGPT" && layer == 20 && !hasTitle
+        && (20...40).contains(height) && (80...900).contains(width)
     return [
         "window_id": Int(numeric(window[kCGWindowNumber as String])),
         "owner": owner,
@@ -32,8 +34,9 @@ func explainWindow(_ window: [String: Any]) -> [String: Any]? {
         "x": numeric(bounds["X"]),
         "y": numeric(bounds["Y"]),
         "has_title": hasTitle,
-        "matches_current_guard": exclusions.isEmpty,
-        "excluded_because": exclusions,
+        "matches_guard_1_1": legacyMatch,
+        "matches_guard_1_2": exclusions.isEmpty,
+        "excluded_by_guard_1_2": exclusions,
     ]
 }
 
@@ -53,7 +56,7 @@ func sourceVersion(_ source: String) -> String {
 func diagnosticReport(windows: [[String: Any]], source: String, log: String,
                       inputSource: String) -> [String: Any] {
     [
-        "diagnostic_version": "1",
+        "diagnostic_version": "2",
         "read_only": true,
         "window_list_available": !windows.isEmpty,
         "on_screen_window_count": windows.count,

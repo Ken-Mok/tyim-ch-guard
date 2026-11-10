@@ -1,10 +1,10 @@
 # tyim-ch-guard
 
-Local macOS workaround for ChatGPT Computer History leaving Traditional Chinese IME candidate bars on screen. Current version: **1.1.1**.
+Local macOS workaround for ChatGPT Computer History leaving Traditional Chinese IME candidate bars on screen. Current version: **1.2.0**.
 
 Tracked upstream: [openai/codex#42181](https://github.com/openai/codex/issues/42181).
 
-Computer History stays enabled. The guard detects candidate-like windows and sends `TERM` to `TYIM_Extension`; it does not change ChatGPT or its recorder. This is recovery after the underlying bug occurs, not an upstream fix.
+Computer History stays enabled. ChatGPT and Microsoft Teams are supported owners. The guard detects candidate-like windows and sends `TERM` to `TYIM_Extension`; it does not change ChatGPT or its recorder. This is recovery after the underlying bug occurs, not an upstream fix.
 
 ## Install or upgrade
 
@@ -38,9 +38,11 @@ Check the installed executable from a normal Terminal:
 
 - `accessibility_granted: false`: the guard cannot enable punctuation monitoring. Reauthorize it in Accessibility.
 - `window_list_available: false`: this execution environment could not enumerate on-screen windows. A candidate count of zero is not proof that a stuck bar is absent.
-- The daemon log should show `event tap listening` once monitoring starts.
+- `matching_candidates_by_owner` shows which app owns the recognized bars.
+- The daemon log should show `event tap listening` once monitoring starts. Multiple-bar recovery does not require this listener.
+- After cleanup, `verification owner=... result=removed` confirms that the original matching window IDs disappeared.
 
-Without Accessibility, multiple-window, focus-change, and input-source-change recovery can still operate. A single candidate while ChatGPT and TYIM remain active is deliberately left alone: there is no unconditional 20-second reset.
+Without Accessibility, multiple-window, focus-change, and input-source-change recovery can still operate. A single candidate while its owning app and TYIM remain active is deliberately left alone: there is no unconditional 20-second reset.
 
 ## An existing bar did not disappear after upgrading
 
@@ -50,7 +52,7 @@ Reauthorizing the listener does not itself dismiss a bar left behind before the 
 "$HOME/Library/Application Support/tyim-ch-guard/tyim-ch-guard" --once
 ```
 
-The command reports whether matching windows were found and whether the restart command succeeded. Success reports a restart request, not visual proof that the bar disappeared.
+The command reports whether matching windows were found and whether the restart command succeeded. After a successful restart command, it waits 0.8 seconds and checks whether the original window IDs disappeared. Exit status 2 means original windows remain; status 3 means enumeration is unavailable, so cleanup cannot be verified.
 
 ## Recovery rules
 
@@ -60,19 +62,21 @@ If several visible bars survive a successful TYIM restart, collect their actual 
 ./scripts/diagnose.sh
 ```
 
-Run this from a normal Terminal while the bars remain visible. It makes no changes and reports small floating windows from all owners, including narrow pills the guard currently excludes. It omits window titles, candidate text, keystrokes, and screenshots. If `window_list_available` is false, that environment cannot provide the evidence needed to identify the bars; a zero match count does not mean they were cleared. The input-source field describes Terminal at collection time, not the earlier ChatGPT composition.
+Run this from a normal Terminal while the bars remain visible. It makes no changes and reports small floating windows from all owners, comparing the legacy 1.1 matcher with the 1.2 matcher. It omits window titles, candidate text, keystrokes, and screenshots. If `window_list_available` is false, that environment cannot provide the evidence needed to identify the bars; a zero match count does not mean they were cleared. The input-source field describes Terminal at collection time, not the earlier ChatGPT composition.
 
-Matching windows have owner `ChatGPT`, layer `20`, no available title, height 20–40, and width 80–900. The reported upstream example is approximately `397 × 28`.
+Matching windows have owner `ChatGPT` or `Microsoft Teams`, layer `20`, no available title, height 20–40, and width 40–900. The 40-point lower limit includes the observed 52-point Teams pill. Window Server and Control Center windows remain excluded. The original upstream example is approximately `397 × 28`; a later user report identified five Teams-owned `397 × 28` bars and one `52 × 28` pill, all excluded by the old ChatGPT-only rule.
 
 The guard polls every 0.2 seconds and may restart TYIM when:
 
-1. Two or more matching windows exist.
-2. The same matching window remains after leaving ChatGPT for about 0.6 seconds.
+1. Two or more matching windows exist for the same owner. One bar in each of two apps is not counted as multiple bars for a single owner.
+2. The same matching window remains after leaving its owning app for about 0.6 seconds.
 3. A window present while TYIM was active remains about 0.4 seconds after leaving that input method.
-4. About 1.5 seconds after startup, a matching window exists outside an active ChatGPT/TYIM composition.
+4. About 1.5 seconds after startup, a matching window exists outside an active supported-owner/TYIM composition.
 5. An authorized punctuation event (`;`, `'`, `/`, `,`, or `.`) leaves its original window visible after about 0.2 seconds.
 
-Punctuation recovery only arms inside ChatGPT with TYIM active and a recent matching window. Command, Control, and Option shortcuts do not arm it. Further typing or a focus/input-source change cancels pending punctuation cleanup. Actual recovery latency includes the polling interval; restarts are limited to at most one every two seconds.
+Punctuation recovery only arms inside the candidate window’s owning app with TYIM active and a recent matching window. Command, Control, and Option shortcuts do not arm it. Further typing or a focus/input-source change cancels pending punctuation cleanup. Actual recovery latency includes the polling interval; restarts are limited to at most one every two seconds.
+
+Recovery policies are kept separately for each owner, with one global restart cooldown. After an automatic restart, the guard checks original window IDs after 0.8 seconds. Logs report `removed`, `remaining(n)`, or `unavailable`. If windows remain or cannot be checked, the owner backs off for 15 seconds before another attempt. A successful TERM exit alone is not treated as a successful cleanup.
 
 A stationary candidate alone is not considered stale. This protects normal compositions that remain open while the user is thinking.
 

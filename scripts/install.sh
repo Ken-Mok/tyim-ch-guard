@@ -97,15 +97,19 @@ done
 if [[ "${running}" -ne 1 ]]; then echo "Updated service did not start." >&2; exit 1; fi
 CHANGED=0
 
+sleep 1.2
 echo "Installed ${BIN}"
 echo "Backup: ${BACKUP_DIR}"
 status="$("${BIN}" --status)"
 printf "%s\n" "${status}"
+if [[ -f "${GUARD_USER_ROOT}/Library/Logs/tyim-ch-guard.log" ]]; then
+  tail -n 6 "${GUARD_USER_ROOT}/Library/Logs/tyim-ch-guard.log"
+fi
 if printf "%s\n" "${status}" | grep -q '"accessibility_granted" : false'; then
   echo "ACTION REQUIRED: macOS has not authorized punctuation recovery for this executable."
   echo "In System Settings > Privacy & Security > Accessibility, turn tyim-ch-guard off and on."
   echo "If it is still untrusted, remove its old entry and add the installed executable again."
-  echo "Existing candidate windows are not forcibly cleared while you are composing in ChatGPT."
+  echo "A single active TYIM candidate is protected; multiple matching bars can trigger a reset."
   open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" >/dev/null 2>&1 || true
 fi
 echo "Computer History settings were not changed."
