@@ -54,6 +54,14 @@ The command reports whether matching windows were found and whether the restart 
 
 ## Recovery rules
 
+If several visible bars survive a successful TYIM restart, collect their actual window metadata before changing matching rules:
+
+```bash
+./scripts/diagnose.sh
+```
+
+Run this from a normal Terminal while the bars remain visible. It makes no changes and reports small floating windows from all owners, including narrow pills the guard currently excludes. It omits window titles, candidate text, keystrokes, and screenshots. If `window_list_available` is false, that environment cannot provide the evidence needed to identify the bars; a zero match count does not mean they were cleared. The input-source field describes Terminal at collection time, not the earlier ChatGPT composition.
+
 Matching windows have owner `ChatGPT`, layer `20`, no available title, height 20–40, and width 80–900. The reported upstream example is approximately `397 × 28`.
 
 The guard polls every 0.2 seconds and may restart TYIM when:

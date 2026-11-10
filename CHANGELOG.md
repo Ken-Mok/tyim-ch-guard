@@ -2,6 +2,7 @@
 
 ## 1.1.1
 
+- Add a standalone read-only window diagnostic for narrow pills and other owners that the guard excludes, with explicit exclusion reasons and no window-title or candidate text.
 - Add `--status` so installation can report missing Accessibility permission, input-source state, candidate counts, and unavailable window enumeration without restarting the IME.
 - Report failed one-shot restarts and no matching windows instead of silently returning.
 - Log observer state changes and a 60-second heartbeat without recording typed text or window contents.

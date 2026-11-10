@@ -7,3 +7,7 @@ cat "${ROOT_DIR}/Sources/main.swift" "${ROOT_DIR}/tests/RegressionTests.swift" >
 swiftc -D GUARD_TESTS -module-cache-path "${TEST_DIR}/cache" \
   "${TEST_DIR}/main.swift" -o "${TEST_DIR}/regression-tests"
 "${TEST_DIR}/regression-tests"
+cat "${ROOT_DIR}/Sources/diagnose.swift" "${ROOT_DIR}/tests/DiagnosticTests.swift" > "${TEST_DIR}/diagnostic-main.swift"
+swiftc -D DIAGNOSTIC_TESTS -module-cache-path "${TEST_DIR}/cache" \
+  "${TEST_DIR}/diagnostic-main.swift" -o "${TEST_DIR}/diagnostic-tests"
+"${TEST_DIR}/diagnostic-tests"
